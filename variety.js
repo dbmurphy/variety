@@ -273,7 +273,7 @@ if($persistResults) {
 if($outputFormat === 'json') {
   printjson(varietyResults); // valid formatted json output, compressed variant is printjsononeline()
 } else {  // output nice ascii table with results
-  var table = [['key', 'types', 'occurrences', 'percents'], ['', '', '', '']]; // header + delimiter rows
+  var table = [['key', 'types', 'occurrences', 'percents','Shardable','Null', 'Sparse', 'MultiKey'], ['', '', '', '', '', '', '', '']]; // header + delimiter rows
 
    // return the number of decimal places or 1, if the number is int (1.23=>2, 100=>1, 0.1415=>4)
    var significantDigits = function(value) {
@@ -282,9 +282,34 @@ if($outputFormat === 'json') {
     };
 
   var maxDigits = Math.max.apply(null, varietyResults.map(function(value){return significantDigits(value.percentContaining);}));
+  maxDigits = maxDigits > 3 ? 3 : maxDigits;
 
   varietyResults.forEach(function(key) {
-    table.push([key._id.key, key.value.types.toString(), key.totalOccurrences.toString(), key.percentContaining.toFixed(maxDigits).toString()]);
+    // Check Indexing Type for sharding
+      //Check for Sparse
+      var namespace = db + "." + collection;
+      var indexKey = "key."+key._id.key;
+      var query = { ns : namespace, sparse: true};
+      query[indexKey] = 1; 
+      var isInSparse = db.system.indexes.find(query).count() > 0 ? "Y":"N";
+      //Check for MultiKey
+      var isMultiKey =  key.value.types.indexOf('Array') > -1 ? "Y" : "N";
+      //CheckForNulls
+      var hasNulls =  key.percentContaining.toFixed(maxDigits) < 100.0  ? "Y" : "N"
+
+
+    table.push(
+      [
+        key._id.key, 
+        key.value.types.toString(), 
+        key.totalOccurrences.toString(), 
+        key.percentContaining.toFixed(maxDigits).toString(),
+        (hasNulls === "Y" || isInSparse === "Y" || isMultiKey == "Y" || key.value.types.length > 1 )? "N" : "Y",
+        hasNulls,
+        isInSparse,
+        isMultiKey
+      ]
+    );
   });
 
   var colMaxWidth = function(arr, index) {
